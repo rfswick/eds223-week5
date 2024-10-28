@@ -1,0 +1,179 @@
+---
+title: "Week 5 - Vector/Raster Interactions"
+author: "Rachel Swick"
+format: html
+editor: visual
+---
+
+```{r}
+library(sf)
+library(terra)
+library(tidyverse)
+library(tmap)
+library(spData)
+library(spDataLarge)
+library(units)
+```
+
+```{r}
+# Raster data
+elevation <- rast(system.file("raster/srtm.tif", package = "spDataLarge"))
+
+# Vector data
+boundary <- read_sf(system.file("vector/zion.gpkg", package = "spDataLarge"))
+```
+
+```{r}
+# Check if the CRS match
+if(crs(elevation) == crs(boundary)){
+  print("CRS match")
+} else{
+  warning("update CRS to match")
+  boundary <- st_transform(boundary, st_crs(elevation))
+}
+```
+
+```{r}
+tm_shape(elevation) +
+  tm_raster(title = "Elevation (meters)") +
+  tm_shape(boundary) +
+  tm_borders(lwd = 2) +
+  tm_layout(legend.outside = TRUE)
+```
+
+```{r}
+# Crop raster to the extent of the vector object
+elevation_cropped <- terra::crop(elevation, boundary)
+```
+
+```{r}
+tm_shape(elevation_cropped) +
+  tm_raster(title = "Elevation (meters)") +
+  tm_shape(boundary) +
+  tm_borders(lwd = 2) +
+  tm_layout(legend.outside = TRUE)
+```
+
+```{r}
+# mask our raster based on vector object
+# convert the cells outside of the park to NA
+elevation_masked <- terra::mask(elevation, boundary)
+
+tm_shape(elevation_masked) +
+  tm_raster(title = "Elevation (meters)") +
+  tm_shape(boundary) +
+  tm_borders(lwd = 2) +
+  tm_layout(legend.outside = TRUE)
+```
+
+```{r}
+elevation_masked <- terra::mask(elevation_cropped, boundary)
+
+tm_shape(elevation_masked) +
+  tm_raster(title = "Elevation (meters)") +
+  tm_shape(boundary) +
+  tm_borders(lwd = 2) +
+  tm_layout(legend.outside = TRUE)
+```
+
+```{r}
+# Mask raster based on vector object
+# Convert cells outside of the park to NA
+elevation_inverse_masked <- terra::mask(elevation_cropped, boundary, inverse = TRUE)
+
+tm_shape(elevation_inverse_masked) +
+  tm_raster(title = "Elevation (meters)") +
+  tm_shape(boundary) +
+  tm_borders(lwd = 2) +
+  tm_layout(legend.outside = TRUE)
+```
+
+```{r}
+# Masking to cells inside of park
+elevation_inside <- mask(elevation_cropped, boundary)
+
+# Create a mask based on the value of the cells
+elevation_mask <- elevation_inside
+
+# Directly reassign layer names
+names(elevation) <- "elevation"
+
+elevation_mask[elevation_mask < 2000] <- NA
+
+elevation_mask_poly <- terra::as.polygons(elevation_mask) %>% 
+  st_as_sf()
+
+tm_shape(elevation_mask_poly) +
+  tm_polygons() +
+tm_shape(boundary) +
+  tm_borders(lwd = 2) +
+  tm_layout(legend.outside = TRUE)
+```
+
+
+```{r}
+data("zion_points", package = "spDataLarge")
+
+crs(zion_points) == crs(elevation)
+
+zion_points <- st_transform(zion_points, crs = st_crs(elevation))
+
+tm_shape(elevation) +
+  tm_raster() +
+  tm_shape(boundary) +
+  tm_borders() +
+  tm_shape(zion_points) +
+  tm_symbols()
+
+pts_elevation <- terra::extract(elevation, zion_points)
+
+zion_points <- cbind(zion_points, pts_elevation) 
+```
+
+```{r}
+zion_transect <- cbind(c(-133.2, -112.9),
+                       c(37.45, 37.2)) %>% 
+  st_linestring() %>% 
+  st_sfc(crs = crs(elevation)) %>% 
+  st_sf(geometry = .)
+
+tm_shape(elevation) +
+  tm_raster() +
+  tm_shape(zion_transect) +
+  tm_lines()
+
+zion_transect$id = 1:nrow(zion_transect)
+zion_transect <- st_segmentize(zion_transect, dfMaxLength = 250)
+zion_transect <- st_cast(zion_transect, "POINT")
+
+zion_transect <- zion_transect %>% 
+  group_by(id) %>% 
+  mutate(dist = st_distance(geometry)[,1])
+
+tm_shape(elevation) +
+  tm_raster() +
+  tm_shape(zion_transect) +
+  tm_bubbles()
+
+transect <- terra::extract(elevation, zion_transect)
+zion_transect <- cbind(zion_transect, transect)
+
+zion_transect <- zion_transect %>% 
+  
+
+ggplot(zion_transect, aes(x = dist, y = elevation)) +
+  geom_point()
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
